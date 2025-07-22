@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Screenshots (如果不想上传截图的话)
+# screenshots/
+
+# Drivers (浏览器驱动文件通常不需要上传)
+drivers/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config files with sensitive info (如果配置文件包含敏感信息)
+# config/config.yaml 

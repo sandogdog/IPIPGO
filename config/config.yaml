@@ -1,0 +1,50 @@
+# 浏览器配置
+browser:
+  default: edge  # chrome, firefox, edge
+  headless: false
+  window_size: "1920,1080"
+  close_after_test: false  # 测试完成后是否关闭浏览器，false=保持打开
+  
+# 超时配置
+timeout:
+  implicitly_wait: 10
+  page_load_timeout: 30
+  script_timeout: 30
+  
+# 测试环境配置
+environment:
+  base_url: "https://test.ipipgo.com/zh-CN/"
+  test_url: "https://test.ipipgo.com/zh-CN/"
+  
+# 管理后台环境配置
+admin_environment:
+  login_url: "https://sso.xiaoxitech.com/login?project=lwlu63w1&cb=https%3A%2F%2Ftest-admin-ipipgo.cd.xiaoxigroup.net"
+  dashboard_url: "https://test-admin-ipipgo.cd.xiaoxigroup.net"
+  
+# 日志配置
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+# 截图配置
+screenshot:
+  on_failure: true
+  save_path: "./screenshots/"
+
+# 测试数据配置
+test_data:
+  login:
+    username: "18327166247"
+    password: "qinrenchi123"
+  
+  # 管理后台登录数据
+  admin_login:
+    username: "qinrenchi"
+    password: "Sandog031220@"
+    target_position: "秦仁驰"  # 切换到的目标职位
+  
+  # 支付宝支付配置
+  alipay:
+    email: "lgipqm7573@sandbox.com"
+    login_password: "111111"
+    pay_password: "111111" 

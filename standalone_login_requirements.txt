@@ -1,0 +1,6 @@
+# IPIPGO独立登录程序依赖包
+# 运行命令：pip install -r standalone_login_requirements.txt
+
+selenium==4.15.2
+webdriver-manager==4.0.1
+# 注意：json和re模块是Python内置模块，无需安装 
