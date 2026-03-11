@@ -23,6 +23,7 @@ class LoginPage(BasePage):
     LOGIN_BUTTON_ALT3 = (By.CSS_SELECTOR, "button[type='button'].el-button")
     LOGIN_BUTTON_SPAN = (By.XPATH, "//button[contains(@class,'login-btn')]//span[contains(text(),'登录')]")
     
+    
     # 登录后的页面元素（用于判断登录是否成功）
     USER_AVATAR = (By.CSS_SELECTOR, ".user-info, .avatar, .profile, .user-avatar")
     SUCCESS_INDICATOR = (By.CSS_SELECTOR, ".dashboard, .user-center, .my-account, .personal-center")
@@ -49,6 +50,17 @@ class LoginPage(BasePage):
     
     def click_login_link(self):
         """点击登录链接"""
+        # 首先尝试关闭弹窗（如果存在）
+        try:
+            print("🔍 检查并关闭弹窗...")
+            close_button = self.driver.find_element(By.CSS_SELECTOR, "div.close-pop.iconfont.icon-dankuang_guanbi.newclose")
+            if close_button.is_displayed():
+                close_button.click()
+                print("✓ 弹窗已关闭")
+                time.sleep(1)
+        except:
+            print("ℹ️ 未发现弹窗，继续执行")
+        
         # 等待登录链接可点击
         login_element = WebDriverWait(self.driver, 10).until(
             EC.element_to_be_clickable(self.LOGIN_LINK)

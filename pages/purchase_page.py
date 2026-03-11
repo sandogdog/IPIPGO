@@ -86,6 +86,148 @@ class PurchasePage(BasePage):
             print(f"加载配置文件失败: {e}")
             return {}
     
+    def handle_payment_with_retry(self, buy_button_func, pay_button_func, package_name="套餐", max_retry_attempts=3):
+        """通用的支付重试处理方法"""
+        try:
+            # 从配置文件获取支付宝账号信息
+            alipay_config = self.config.get('test_data', {}).get('alipay', {})
+            email = alipay_config.get('email', 'lgipqm7573@sandbox.com')
+            login_password = alipay_config.get('login_password', '111111')
+            pay_password = alipay_config.get('pay_password', '111111')
+            
+            for retry_count in range(1, max_retry_attempts + 1):
+                print(f"\n{'='*60}")
+                print(f"💰 开始{package_name}支付流程 (第{retry_count}次尝试)")
+                print(f"{'='*60}")
+                
+                try:
+                    # 1. 点击立即购买按钮（仅在重试时需要，第一次已经在外部点击过了）
+                    if buy_button_func and retry_count > 1:  # 只有重试时才需要重新点击立即购买按钮
+                        print(f"步骤1: 重试-点击{package_name}立即购买按钮...")
+                        if not buy_button_func():
+                            print(f"❌ 重试-{package_name}立即购买按钮点击失败")
+                            if retry_count < max_retry_attempts:
+                                print("🔄 准备重试...")
+                                time.sleep(2)
+                                continue
+                            return False
+                        print(f"✓ 重试-成功点击{package_name}立即购买按钮")
+                    elif retry_count == 1:
+                        print(f"ℹ️ 第一次尝试，跳过{package_name}立即购买按钮（已在外部点击）")
+                    
+                    # 2. 点击立即支付按钮并处理支付流程
+                    print(f"步骤2: 开始{package_name}支付流程...")
+                    
+                    # 记录当前窗口句柄
+                    self.original_window = self.driver.current_window_handle
+                    original_window_count = len(self.driver.window_handles)
+                    
+                    # 设置支付宝支付模块的原始窗口
+                    self.alipay_payment.set_original_window(self.original_window)
+                    
+                    # 点击支付按钮
+                    if not pay_button_func():
+                        print(f"❌ {package_name}立即支付按钮点击失败")
+                        if retry_count < max_retry_attempts:
+                            print("🔄 准备重试...")
+                            time.sleep(2)
+                            continue
+                        return False
+                    
+                    print(f"✓ 成功点击{package_name}立即支付按钮")
+                    
+                    # 3. 等待跳转到支付宝页面
+                    print("步骤3: 等待跳转到支付宝页面...")
+                    payment_window_found = False
+                    
+                    # 方案1：等待新窗口打开
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            lambda driver: len(driver.window_handles) > original_window_count
+                        )
+                        print("✓ 检测到新窗口打开（支付页面）")
+                        
+                        # 切换到支付宝窗口
+                        for window in self.driver.window_handles:
+                            if window != self.original_window:
+                                self.driver.switch_to.window(window)
+                                print("✓ 已切换到支付宝页面窗口")
+                                payment_window_found = True
+                                break
+                                
+                    except TimeoutException:
+                        # 方案2：检查当前页面是否跳转到支付页面
+                        try:
+                            WebDriverWait(self.driver, 5).until(
+                                EC.any_of(
+                                    EC.url_contains("alipay"),
+                                    EC.url_contains("pay"),
+                                    EC.title_contains("支付"),
+                                    EC.presence_of_element_located(self.ALIPAY_INDICATOR)
+                                )
+                            )
+                            print("✓ 当前页面跳转到支付页面")
+                            payment_window_found = True
+                        except TimeoutException:
+                            print("⚠️ 未检测到明显的支付页面跳转")
+                            if retry_count < max_retry_attempts:
+                                print("🔄 准备重试...")
+                                time.sleep(2)
+                                continue
+                            return False
+                    
+                    if not payment_window_found:
+                        print("❌ 未能成功跳转到支付页面")
+                        if retry_count < max_retry_attempts:
+                            print("🔄 准备重试...")
+                            time.sleep(2)
+                            continue
+                        return False
+                    
+                    # 4. 执行支付宝支付流程
+                    print("步骤4: 执行支付宝支付流程...")
+                    payment_result = self.alipay_payment.complete_payment_process(
+                        email=email,
+                        login_password=login_password,
+                        pay_password=pay_password
+                    )
+                    
+                    # 5. 处理支付结果
+                    if payment_result == "success":
+                        print(f"🎉 {package_name}支付流程成功完成！")
+                        return True
+                    elif payment_result == "retry":
+                        print(f"⚠️ {package_name}支付检测到支付宝页面异常，需要重试...")
+                        if retry_count < max_retry_attempts:
+                            print("🔄 返回购买页面重新尝试...")
+                            time.sleep(3)  # 稍等一下再重试
+                            continue
+                        else:
+                            print(f"❌ {package_name}支付达到最大重试次数，支付失败")
+                            return False
+                    else:  # payment_result == "failed"
+                        print(f"❌ {package_name}支付流程失败")
+                        if retry_count < max_retry_attempts:
+                            print("🔄 准备重试...")
+                            time.sleep(3)
+                            continue
+                        return False
+                    
+                except Exception as e:
+                    print(f"❌ {package_name}支付流程异常 (第{retry_count}次尝试): {e}")
+                    if retry_count < max_retry_attempts:
+                        print("🔄 准备重试...")
+                        time.sleep(3)
+                        continue
+                    return False
+            
+            print(f"❌ {package_name}支付流程在{max_retry_attempts}次尝试后仍然失败")
+            return False
+            
+        except Exception as e:
+            print(f"❌ {package_name}支付重试处理异常: {e}")
+            return False
+    
     def click_dynamic_enterprise_tab(self):
         """点击动态（企业）选项卡（增强版）"""
         try:
@@ -422,89 +564,59 @@ class PurchasePage(BasePage):
             return False
     
     def click_enterprise_pay_button_and_handle_payment(self):
-        """点击企业套餐立即支付按钮并处理支付流程"""
-        try:
-            print("🔍 正在查找企业套餐立即支付按钮...")
-            
-            # 记录当前窗口句柄
-            self.original_window = self.driver.current_window_handle
-            original_window_count = len(self.driver.window_handles)
-            
-            # 设置支付宝支付模块的原始窗口
-            self.alipay_payment.set_original_window(self.original_window)
-            
-            # 等待企业套餐支付按钮可点击并点击
-            enterprise_pay_btn = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable(self.SECOND_PAY_BUTTON)
-            )
-            
-            print(f"📋 支付按钮文本: {enterprise_pay_btn.text}")
-            
-            # 滚动到元素位置
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", enterprise_pay_btn)
-            time.sleep(1)
-            
-            # 点击支付按钮
-            enterprise_pay_btn.click()
-            print("✅ 已点击企业套餐立即支付按钮")
-            
-            # 等待跳转到支付宝页面
-            payment_window_found = False
-            
-            # 方案1：等待新窗口打开
+        """点击企业套餐立即支付按钮并处理支付流程（带重试机制）"""
+        def click_enterprise_buy_button():
+            """重试时需要重新点击企业套餐立即购买按钮"""
             try:
-                WebDriverWait(self.driver, 10).until(
-                    lambda driver: len(driver.window_handles) > original_window_count
-                )
-                print("✓ 检测到新窗口打开（企业套餐支付页面）")
+                print("🔍 重试：正在查找企业套餐立即购买按钮...")
                 
-                # 切换到支付宝窗口
-                for window in self.driver.window_handles:
-                    if window != self.original_window:
-                        self.driver.switch_to.window(window)
-                        print("✓ 已切换到企业套餐支付宝页面窗口")
-                        payment_window_found = True
-                        break
-                        
-            except TimeoutException:
-                # 方案2：检查当前页面是否跳转到支付页面
-                try:
-                    WebDriverWait(self.driver, 5).until(
-                        EC.any_of(
-                            EC.url_contains("alipay"),
-                            EC.url_contains("pay"),
-                            EC.title_contains("支付"),
-                            EC.presence_of_element_located(self.ALIPAY_INDICATOR)
-                        )
-                    )
-                    print("✓ 当前页面跳转到企业套餐支付页面")
-                    payment_window_found = True
-                except TimeoutException:
-                    print("⚠️ 未检测到明显的企业套餐支付页面跳转")
+                # 确保在企业选项卡
+                if not self.click_dynamic_enterprise_tab():
+                    print("❌ 重试：点击动态企业选项卡失败")
                     return False
-            
-            if payment_window_found:
-                # 从配置文件获取支付宝账号信息
-                alipay_config = self.config.get('test_data', {}).get('alipay', {})
-                email = alipay_config.get('email', 'lgipqm7573@sandbox.com')
-                login_password = alipay_config.get('login_password', '111111')
-                pay_password = alipay_config.get('pay_password', '111111')
                 
-                print(f"企业套餐支付使用支付宝账号: {email}")
-                
-                # 调用支付宝支付模块处理完整支付流程
-                return self.alipay_payment.complete_payment_process(
-                    email=email,
-                    login_password=login_password,
-                    pay_password=pay_password
+                # 等待企业套餐购买按钮可点击并点击
+                enterprise_buy_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable(self.SECOND_BUY_BUTTON)
                 )
-            else:
-                print("❌ 未能成功跳转到企业套餐支付页面")
+                enterprise_buy_btn.click()
+                print("✓ 重试：成功点击企业套餐立即购买按钮")
+                time.sleep(2)  # 等待页面加载
+                return True
+            except Exception as e:
+                print(f"❌ 重试：点击企业套餐立即购买按钮失败: {e}")
                 return False
-            
-        except Exception as e:
-            print(f"❌ 企业套餐支付流程失败: {e}")
-            return False
+        
+        def click_enterprise_pay_button():
+            try:
+                print("🔍 正在查找企业套餐立即支付按钮...")
+                
+                # 等待企业套餐支付按钮可点击并点击
+                enterprise_pay_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable(self.SECOND_PAY_BUTTON)
+                )
+                
+                print(f"📋 支付按钮文本: {enterprise_pay_btn.text}")
+                
+                # 滚动到元素位置
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", enterprise_pay_btn)
+                time.sleep(1)
+                
+                # 点击支付按钮
+                enterprise_pay_btn.click()
+                print("✅ 已点击企业套餐立即支付按钮")
+                return True
+            except Exception as e:
+                print(f"❌ 点击企业套餐立即支付按钮失败: {e}")
+                return False
+        
+        # 使用通用的支付重试处理方法
+        return self.handle_payment_with_retry(
+            buy_button_func=click_enterprise_buy_button,  # 重试时需要重新点击企业套餐立即购买按钮
+            pay_button_func=click_enterprise_pay_button,
+            package_name="企业套餐",
+            max_retry_attempts=3
+        )
     
     def complete_second_purchase_flow(self):
         """完整的第二次购买流程（企业套餐）"""
@@ -719,79 +831,44 @@ class PurchasePage(BasePage):
             return False
     
     def click_pay_button_and_handle_payment(self):
-        """点击立即支付按钮并处理支付流程"""
-        try:
-            # 记录当前窗口句柄
-            self.original_window = self.driver.current_window_handle
-            original_window_count = len(self.driver.window_handles)
-            
-            # 设置支付宝支付模块的原始窗口
-            self.alipay_payment.set_original_window(self.original_window)
-            
-            # 等待支付按钮可点击并点击
-            pay_btn = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div.pay-btn button.personal-button"))
-            )
-            pay_btn.click()
-            print("✓ 已点击立即支付按钮")
-            
-            # 等待跳转到支付宝页面
-            payment_window_found = False
-            
-            # 方案1：等待新窗口打开
+        """点击立即支付按钮并处理支付流程（带重试机制）"""
+        def click_second_buy_button():
+            """重试时需要重新点击第二个立即购买按钮"""
             try:
-                WebDriverWait(self.driver, 10).until(
-                    lambda driver: len(driver.window_handles) > original_window_count
+                print("🔍 重试：正在查找第二个立即购买按钮...")
+                # 等待第二个购买按钮可点击并点击
+                second_buy_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable(self.OLD_SECOND_BUY_BUTTON)
                 )
-                print("✓ 检测到新窗口打开（支付页面）")
-                
-                # 切换到支付宝窗口
-                for window in self.driver.window_handles:
-                    if window != self.original_window:
-                        self.driver.switch_to.window(window)
-                        print("✓ 已切换到支付宝页面窗口")
-                        payment_window_found = True
-                        break
-                        
-            except TimeoutException:
-                # 方案2：检查当前页面是否跳转到支付页面
-                try:
-                    WebDriverWait(self.driver, 5).until(
-                        EC.any_of(
-                            EC.url_contains("alipay"),
-                            EC.url_contains("pay"),
-                            EC.title_contains("支付"),
-                            EC.presence_of_element_located(self.ALIPAY_INDICATOR)
-                        )
-                    )
-                    print("✓ 当前页面跳转到支付页面")
-                    payment_window_found = True
-                except TimeoutException:
-                    print("⚠️ 未检测到明显的支付页面跳转")
-                    return False
-            
-            if payment_window_found:
-                # 从配置文件获取支付宝账号信息
-                alipay_config = self.config.get('test_data', {}).get('alipay', {})
-                email = alipay_config.get('email', 'lgipqm7573@sandbox.com')
-                login_password = alipay_config.get('login_password', '111111')
-                pay_password = alipay_config.get('pay_password', '111111')
-                
-                print(f"使用支付宝账号: {email}")
-                
-                # 调用支付宝支付模块处理完整支付流程
-                return self.alipay_payment.complete_payment_process(
-                    email=email,
-                    login_password=login_password,
-                    pay_password=pay_password
-                )
-            else:
-                print("❌ 未能成功跳转到支付页面")
+                second_buy_btn.click()
+                print("✓ 重试：成功点击第二个立即购买按钮")
+                time.sleep(2)  # 等待页面加载
+                return True
+            except Exception as e:
+                print(f"❌ 重试：点击第二个立即购买按钮失败: {e}")
                 return False
-            
-        except Exception as e:
-            print(f"❌ 支付流程失败: {e}")
-            return False
+        
+        def click_pay_button():
+            try:
+                print("🔍 正在查找立即支付按钮...")
+                # 等待支付按钮可点击并点击
+                pay_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div.pay-btn button.personal-button"))
+                )
+                pay_btn.click()
+                print("✓ 已点击立即支付按钮")
+                return True
+            except Exception as e:
+                print(f"❌ 点击立即支付按钮失败: {e}")
+                return False
+        
+        # 使用通用的支付重试处理方法
+        return self.handle_payment_with_retry(
+            buy_button_func=click_second_buy_button,  # 重试时需要重新点击第二个立即购买按钮
+            pay_button_func=click_pay_button,
+            package_name="个人套餐",
+            max_retry_attempts=3
+        )
     
     def complete_purchase_flow(self):
         """完整的购买流程"""

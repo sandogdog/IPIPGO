@@ -403,11 +403,19 @@ class AdminLoginPage(BasePage):
                 print("❌ 密码输入失败")
                 return False
             
-            # 步骤4: 点击登录按钮
-            print("步骤4: 点击登录按钮...")
+            # 步骤4: 自动点击登录按钮（现在无需验证码）
+            print("步骤4: 准备点击登录按钮...")
+            print("💡 提示：现在没有验证码，将自动点击登录")
+            
+            # 等待几秒让页面稳定
+            time.sleep(2)
+            
+            # 自动点击登录按钮
             if not self.click_login_button():
                 print("❌ 登录按钮点击失败")
                 return False
+            
+            print("✅ 登录按钮已点击，等待页面跳转...")
             
             # 步骤5: 检查登录结果
             print("步骤5: 检查登录结果...")
@@ -416,7 +424,18 @@ class AdminLoginPage(BasePage):
                 return True
             else:
                 print("⚠️ 管理后台登录状态未确认")
-                return False
+                print("💡 提示：登录按钮已点击，请稍等片刻让页面完成跳转")
+                
+                # 额外等待5秒再次检查
+                print("⏳ 额外等待5秒后再次检查登录状态...")
+                time.sleep(5)
+                
+                if self.is_login_successful():
+                    print("🎉 管理后台登录成功！（延迟确认）")
+                    return True
+                else:
+                    print("❌ 登录状态仍未确认，请检查验证码是否正确")
+                    return False
             
         except Exception as e:
             print(f"❌ 管理后台登录流程失败: {e}")
